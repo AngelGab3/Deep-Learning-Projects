@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 import os
 import platform
+
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -34,11 +37,54 @@ def setup_hardware(
         "mixed_precision": False,
     }
 
+    # 1. First check if PyTorch with CUDA is available (enables RTX 50-series Blackwell / sm_120 GPU acceleration)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            dev_name = torch.cuda.get_device_name(0)
+            info["backend"] = "gpu"
+            info["devices"] = [dev_name]
+            info["gpu_detected"] = True
+            info["gpu_name"] = dev_name
+            info["engine"] = f"PyTorch CUDA {torch.version.cuda}"
+            os.environ["KERAS_BACKEND"] = "torch"
+            if verbose:
+                print(f"[Hardware] GPU acelerada activa: {dev_name} ({info['engine']})")
+            return info
+    except ImportError:
+        pass
+
     try:
         import tensorflow as tf
 
         # 1. Check physical GPUs (NVIDIA / ROCm)
         gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            # Check if GPU compute capability is supported by current TensorFlow
+            # E.g. RTX 50-series (sm_120, CC >= 12.0) requires sm_120 PTX which causes CUDA_ERROR_INVALID_PTX on stock TF
+            try:
+                details = tf.config.experimental.get_device_details(gpus[0])
+                dev_name = details.get("device_name", "NVIDIA GPU")
+                cc = details.get("compute_capability", (0, 0))
+                info["gpu_detected"] = True
+                info["gpu_name"] = dev_name
+                info["compute_capability"] = f"{cc[0]}.{cc[1]}"
+
+                if cc >= (12, 0):
+                    info["backend"] = "cpu_fallback"
+                    info["devices"] = [dev_name]
+                    info["note"] = (
+                        f"Detectada {dev_name} (CC {cc[0]}.{cc[1]} Blackwell). "
+                        f"El binario actual de TensorFlow no incluye kernels sm_120 precompilados; "
+                        f"modo seguro CPU multinúcleo activo."
+                    )
+                    if verbose:
+                        print(f"[Hardware] {info['note']}")
+                    tf.config.set_visible_devices([], "GPU")
+                    return info
+            except Exception:
+                pass
+
         if gpus:
             info["backend"] = "gpu"
             info["devices"] = [gpu.name for gpu in gpus]

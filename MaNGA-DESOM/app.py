@@ -10,6 +10,17 @@ import argparse
 import os
 import sys
 
+if "KERAS_BACKEND" not in os.environ:
+    try:
+        import torch
+        if torch.cuda.is_available():
+            os.environ["KERAS_BACKEND"] = "torch"
+            os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+        else:
+            os.environ["KERAS_BACKEND"] = "tensorflow"
+    except ImportError:
+        os.environ["KERAS_BACKEND"] = "tensorflow"
+
 from desom.ui.server import start_dashboard
 
 

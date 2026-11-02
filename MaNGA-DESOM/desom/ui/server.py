@@ -148,6 +148,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(self.api.get_process_status())
                 return
 
+            if path == "/api/pipeline/metrics":
+                self.send_json(self.api.get_training_metrics())
+                return
+
             self.send_error(404, f"API endpoint not found: {path}")
         except Exception as e:
             sys.stderr.write(f"[UI Server] Exception in GET {self.path}: {e}\n")
@@ -188,6 +192,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(res, status=status_code)
                 return
 
+            if path == "/api/runs/delete":
+                run_id = payload.get("run_id", "")
+                res = self.api.delete_run(run_id=run_id)
+                status_code = 200 if res.get("status") == "deleted" else 400
+                self.send_json(res, status=status_code)
+                return
+
             if path == "/api/config":
                 res = self.api.save_active_config(payload)
                 self.send_json(res)
@@ -202,6 +213,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 stage = str(payload.get("stage", "1"))
                 sample_size = payload.get("sample_size")
                 res = self.api.run_pipeline_stage(stage=stage, sample_size=sample_size)
+                self.send_json(res)
+                return
+
+            if path == "/api/pipeline/stop":
+                res = self.api.stop_pipeline_stage()
                 self.send_json(res)
                 return
 
